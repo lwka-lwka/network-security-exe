@@ -6,6 +6,9 @@
 #   DE實作           DE.py        → DE.exe            （視窗程式）
 name: Build Windows exe
 
+permissions:
+  contents: write
+
 on:
   push:
   workflow_dispatch:
@@ -86,7 +89,11 @@ jobs:
           }
           Get-Process LSB -ErrorAction SilentlyContinue | Stop-Process -Force
           Get-Content out.txt, err.txt -ErrorAction SilentlyContinue | Out-Host
-          if (-not $ok) { Write-Host "LSB.exe 沒有成功啟動"; exit 1 }
+          if (-not $ok) {
+            $msg = ((Get-Content out.txt, err.txt -ErrorAction SilentlyContinue | Select-Object -Last 40) -join "%0A")
+            Write-Host "::error title=LSB 啟動失敗::$msg"
+            exit 1
+          }
           Write-Host "LSB.exe 測試成功"
       - uses: actions/upload-artifact@v4
         with: { name: LSB-exe, path: dist/LSB.exe }
@@ -114,7 +121,27 @@ jobs:
           }
           Get-Process TextWatermark -ErrorAction SilentlyContinue | Stop-Process -Force
           Get-Content out.txt, err.txt -ErrorAction SilentlyContinue | Out-Host
-          if (-not $ok) { Write-Host "TextWatermark.exe 沒有成功啟動"; exit 1 }
+          if (-not $ok) {
+            $msg = ((Get-Content out.txt, err.txt -ErrorAction SilentlyContinue | Select-Object -Last 40) -join "%0A")
+            Write-Host "::error title=TextWatermark 啟動失敗::$msg"
+            exit 1
+          }
           Write-Host "TextWatermark.exe 測試成功"
       - uses: actions/upload-artifact@v4
         with: { name: TextWatermark-exe, path: dist/TextWatermark.exe }
+
+  # ---------------------------------------------------------------- 全部成功後發佈 Release
+  release:
+    needs: [fade, de, lsb, watermark]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: exe, merge-multiple: true }
+      - name: 建立 / 更新 Release「exe」
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la exe
+          gh release delete exe --yes --cleanup-tag || true
+          gh release create exe exe/*.exe --title "通訊及網路安全 實作 exe" --notes "由 GitHub Actions 自動打包（commit ${GITHUB_SHA::7}）" --target "$GITHUB_SHA"
