@@ -1,0 +1,120 @@
+# GitHub Actions：在 GitHub 提供的 Windows 電腦上，把四個實作程式打包成 exe
+# 放在 repo 的 .github/workflows/build-exe.yml
+#   文字浮水印嵌入   HW2.py       → TextWatermark.exe （Gradio 網頁）
+#   數字資料安全技術 fade_gui.py  → FADE.exe          （視窗程式）
+#   LSB hiding 實作  LSB.py       → LSB.exe           （Streamlit 網頁）
+#   DE實作           DE.py        → DE.exe            （視窗程式）
+name: Build Windows exe
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------- 視窗程式
+  fade:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install pyinstaller
+      - name: 打包 FADE.exe
+        run: pyinstaller --noconfirm --onefile --windowed --name FADE --hidden-import fade_gui run_fade.py
+      - name: 測試能否開啟視窗
+        shell: pwsh
+        run: |
+          $env:SELFTEST = "1"; $env:SELFTEST_OUT = "$PWD\fade_ok.txt"
+          Start-Process -FilePath "dist\FADE.exe"
+          for ($i = 0; $i -lt 60; $i++) { Start-Sleep 2; if (Test-Path fade_ok.txt) { break } }
+          Get-Process FADE -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not (Test-Path fade_ok.txt)) { Write-Host "FADE.exe 沒有成功開啟"; exit 1 }
+          Write-Host "FADE.exe 測試成功"
+      - uses: actions/upload-artifact@v4
+        with: { name: FADE-exe, path: dist/FADE.exe }
+
+  de:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install pyinstaller pandas numpy matplotlib openpyxl xlsxwriter
+      - name: 打包 DE.exe
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name DE
+          --hidden-import DE --hidden-import xlsxwriter --hidden-import openpyxl
+          --hidden-import matplotlib.backends.backend_tkagg
+          run_de.py
+      - name: 測試能否開啟視窗
+        shell: pwsh
+        run: |
+          $env:SELFTEST = "1"; $env:SELFTEST_OUT = "$PWD\de_ok.txt"
+          Start-Process -FilePath "dist\DE.exe"
+          for ($i = 0; $i -lt 90; $i++) { Start-Sleep 2; if (Test-Path de_ok.txt) { break } }
+          Get-Process DE -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not (Test-Path de_ok.txt)) { Write-Host "DE.exe 沒有成功開啟"; exit 1 }
+          Write-Host "DE.exe 測試成功"
+      - uses: actions/upload-artifact@v4
+        with: { name: DE-exe, path: dist/DE.exe }
+
+  # ---------------------------------------------------------------- 網頁程式
+  lsb:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install pyinstaller "streamlit==1.45.1" numpy pillow scipy matplotlib
+      - name: 打包 LSB.exe
+        run: >
+          pyinstaller --noconfirm --onefile --name LSB
+          --collect-all streamlit --recursive-copy-metadata streamlit
+          --add-data "LSB.py;."
+          run_lsb.py
+      - name: 測試能否啟動網頁
+        shell: pwsh
+        run: |
+          $env:NO_BROWSER = "1"
+          $p = Start-Process -FilePath "dist\LSB.exe" -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          $ok = $false
+          for ($i = 0; $i -lt 100; $i++) {
+            Start-Sleep 3
+            if ($p.HasExited) { break }
+            try { $r = Invoke-WebRequest "http://localhost:8503/_stcore/health" -UseBasicParsing -TimeoutSec 3
+                  if ($r.Content -match "ok") { $ok = $true; break } } catch {}
+          }
+          Get-Process LSB -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Content out.txt, err.txt -ErrorAction SilentlyContinue | Out-Host
+          if (-not $ok) { Write-Host "LSB.exe 沒有成功啟動"; exit 1 }
+          Write-Host "LSB.exe 測試成功"
+      - uses: actions/upload-artifact@v4
+        with: { name: LSB-exe, path: dist/LSB.exe }
+
+  watermark:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install pyinstaller "gradio==5.29.0"
+      - name: 打包 TextWatermark.exe
+        run: pyinstaller --noconfirm hw2.spec
+      - name: 測試能否啟動網頁
+        shell: pwsh
+        run: |
+          $env:NO_BROWSER = "1"
+          $p = Start-Process -FilePath "dist\TextWatermark.exe" -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          $ok = $false
+          for ($i = 0; $i -lt 100; $i++) {
+            Start-Sleep 3
+            if ($p.HasExited) { break }
+            try { $r = Invoke-WebRequest "http://127.0.0.1:7860/" -UseBasicParsing -TimeoutSec 3
+                  if ($r.StatusCode -eq 200) { $ok = $true; break } } catch {}
+          }
+          Get-Process TextWatermark -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Content out.txt, err.txt -ErrorAction SilentlyContinue | Out-Host
+          if (-not $ok) { Write-Host "TextWatermark.exe 沒有成功啟動"; exit 1 }
+          Write-Host "TextWatermark.exe 測試成功"
+      - uses: actions/upload-artifact@v4
+        with: { name: TextWatermark-exe, path: dist/TextWatermark.exe }
