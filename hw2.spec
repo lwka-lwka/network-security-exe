@@ -20,7 +20,7 @@ a = Analysis(
     ["run_hw2.py"],
     pathex=["."],
     datas=datas,
-    hiddenimports=hidden + ["HW2"],
+    hiddenimports=hidden + ["HW2", "requests"],
     module_collection_mode={"gradio": "py", "gradio_client": "py"},
 )
 pyz = PYZ(a.pure)

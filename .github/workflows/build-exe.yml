@@ -104,7 +104,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: python -m pip install pyinstaller "gradio==5.29.0"
+      - run: python -m pip install pyinstaller "gradio==5.29.0" requests
+      - name: 先確認不打包時能正常 import
+        run: python -c "import gradio, HW2; print(gradio.__version__)"
       - name: 打包 TextWatermark.exe
         run: pyinstaller --noconfirm hw2.spec
       - name: 測試能否啟動網頁
