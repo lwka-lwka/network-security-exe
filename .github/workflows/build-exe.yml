@@ -4,6 +4,7 @@
 #   數字資料安全技術 fade_gui.py  → FADE.exe          （視窗程式）
 #   LSB hiding 實作  LSB.py       → LSB.exe           （Streamlit 網頁）
 #   DE實作           DE.py        → DE.exe            （視窗程式）
+#   挖礦模擬器       mining_simulator.py → BlockchainMiner.exe （視窗程式）
 name: Build Windows exe
 
 permissions:
@@ -60,6 +61,27 @@ jobs:
           Write-Host "DE.exe 測試成功"
       - uses: actions/upload-artifact@v4
         with: { name: DE-exe, path: dist/DE.exe }
+
+  miner:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m pip install pyinstaller
+      - name: 打包 BlockchainMiner.exe
+        run: pyinstaller --noconfirm --onefile --windowed --name BlockchainMiner --hidden-import mining_simulator run_miner.py
+      - name: 測試能否開啟視窗
+        shell: pwsh
+        run: |
+          $env:SELFTEST = "1"; $env:SELFTEST_OUT = "$PWD\miner_ok.txt"
+          Start-Process -FilePath "dist\BlockchainMiner.exe"
+          for ($i = 0; $i -lt 60; $i++) { Start-Sleep 2; if (Test-Path miner_ok.txt) { break } }
+          Get-Process BlockchainMiner -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not (Test-Path miner_ok.txt)) { Write-Host "BlockchainMiner.exe 沒有成功開啟"; exit 1 }
+          Write-Host "BlockchainMiner.exe 測試成功"
+      - uses: actions/upload-artifact@v4
+        with: { name: BlockchainMiner-exe, path: dist/BlockchainMiner.exe }
 
   # ---------------------------------------------------------------- 網頁程式
   lsb:
@@ -134,7 +156,7 @@ jobs:
 
   # ---------------------------------------------------------------- 全部成功後發佈 Release
   release:
-    needs: [fade, de, lsb, watermark]
+    needs: [fade, de, miner, lsb, watermark]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
